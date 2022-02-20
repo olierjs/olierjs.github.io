@@ -1,0 +1,115 @@
+<!DOCTYPE html><html lang="zh-cn"><head><meta charset="utf-8"><meta name="X-UA-Compatible" content="IE=edge"><title> mobx 的一些历史 · Olier</title><meta name="description" content="mobx 的一些历史 - TbhT"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.png"><link rel="stylesheet" href="/css/hermes.css"><link rel="search" type="application/opensearchdescription+xml" href="http://olierjs.github.io/atom.xml" title="Olier"><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="Olier" type="application/atom+xml">
+</head><body><div class="wrap"><header><a class="logo-link" href="/"><img src="/favicon.png" alt="logo"></a><ul class="nav nav-list"><li class="nav-list-item"><a class="nav-list-link" href="/" target="_self">BLOG</a></li><li class="nav-list-item"><a class="nav-list-link" href="https://github.com/olierjs" target="_blank">GITHUB</a></li><li class="nav-list-item"><a class="nav-list-link" href="/archives/" target="_self">ARCHIVE</a></li><li class="nav-list-item"><a class="nav-list-link" href="/atom.xml" target="_self">FEED</a></li></ul></header><main class="container"><div class="post"><article class="post-block"><h1 class="post-title">mobx 的一些历史</h1><div class="post-info">2022年2月20日</div><div class="post-content"><h1 id="起源"><a href="#起源" class="headerlink" title="起源"></a>起源</h1><blockquote>
+<p>2015</p>
+</blockquote>
+<blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://www.mendix.com/blog/making-react-reactive-pursuit-high-performing-easily-maintainable-react-apps/">https://www.mendix.com/blog/making-react-reactive-pursuit-high-performing-easily-maintainable-react-apps/</a></li>
+</ul>
+</blockquote>
+<p>mobx作者 <code>Michel Weststrate</code> 想使用react来迁移一个项目，项目的场景是：在浏览器中会绘制数千个对象，并且这些对象之间耦合度还挺高的。其中一个对象的值会被很多其他对象使用到，所以一个小的值更新，都会触发很多与UI对象无关的更新。这些值可能在用户的拖拽交互中更新，所以为了保持UI的持续响应，所有的更新和重绘都需要在小于 40ms 的时间内进行。单纯从react来说，它还是很快的，但是很快作者就发现，单纯靠react是没法完成这个工作的。</p>
+<p>除了要保持这个项目所需要的性能，代码的可维护性也是需要符合react的原则。因此需要找一种优雅的解决方案，然后就从函数响应式编程中引入了一个概念：<code>Observables</code>。observables 的卖点就是其他的所有使用到的observable都是自动计算出来的。当<code>observable</code>所依赖的其他的<code>observables</code>发生了变化后，会被重新计算。在 <code>Ember</code> 和 <code>Knockout</code>的中，也有使用到<code>observable</code>这个概念。</p>
+<p>也就是说，我们的<code>model</code>模型变成了<code>Observable</code>，那么react 组件就变成了 <code>model</code>模型的<code>Observers</code>。</p>
+<h2 id="从例子开始"><a href="#从例子开始" class="headerlink" title="从例子开始"></a>从例子开始</h2><p>现在假设有这么一个场景，有一系列的文章，文章有名字和价格；有购物车，购物车中有每个文章的数量，以及文章继承下来的价格。最终用来算出总价格。这两者之间的关系如下图：</p>
+<p><img src="./images/mobservable-model.png"></p>
+<p>根据上面这个图，可以列一个需求列表：</p>
+<ul>
+<li><p>如果文章的价格变化了，那么购物车中相关的item价格都应该更新</p>
+</li>
+<li><p>购物车的item数量更新了，那么总价也需要更新</p>
+</li>
+<li><p>文章的名称更新了，那么相关视图也需要更新</p>
+</li>
+<li><p>etc…</p>
+</li>
+</ul>
+<h3 id="data模型"><a href="#data模型" class="headerlink" title="data模型"></a>data模型</h3><p>  根据上面的需求list，可以写出一个数据模型，</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">Article</span>(<span class="params">name, price</span>) </span>&#123;</span><br><span class="line">    mobx.extendObservable(<span class="built_in">this</span>, &#123;</span><br><span class="line">        <span class="attr">name</span>: name,</span><br><span class="line">        <span class="attr">price</span>: price</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">ShoppingCartEntry</span>(<span class="params">article</span>) </span>&#123;</span><br><span class="line">    mobx.extendObservable(<span class="built_in">this</span>, &#123;</span><br><span class="line">        <span class="attr">article</span>: article,</span><br><span class="line">        <span class="attr">amount</span>: <span class="number">1</span>,</span><br><span class="line">        <span class="attr">price</span>: <span class="function"><span class="keyword">function</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="built_in">this</span>.article ? <span class="built_in">this</span>.article.price * <span class="built_in">this</span>.amount : <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">ShoppingCart</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">    mobx.extendObservable(<span class="built_in">this</span>, &#123;</span><br><span class="line">        <span class="attr">entries</span>: [],</span><br><span class="line">        <span class="attr">total</span>: <span class="function"><span class="keyword">function</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="built_in">this</span>.entries.reduce(<span class="function"><span class="keyword">function</span>(<span class="params">sum, entry</span>) </span>&#123;</span><br><span class="line">                <span class="keyword">return</span> sum + entry.price;</span><br><span class="line">            &#125;, <span class="number">0</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="UI模型"><a href="#UI模型" class="headerlink" title="UI模型"></a>UI模型</h3><p>  根据上面的数据模型，来构建一个UI，然后使用observer来进行包装就可以了</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="keyword">var</span> CartView = mobxReact.observer(React.createClass(&#123;</span><br><span class="line">    <span class="attr">render</span>: <span class="function"><span class="keyword">function</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">        <span class="function"><span class="keyword">function</span> <span class="title">renderEntry</span>(<span class="params">entry</span>) </span>&#123;</span><br><span class="line">            <span class="keyword">return</span> (<span class="xml"><span class="tag">&lt;<span class="name">CartEntryView</span> <span class="attr">entry</span>=<span class="string">&#123;entry&#125;</span> <span class="attr">cart</span>=<span class="string">&#123;this.props.cart&#125;</span> <span class="attr">key</span>=<span class="string">&#123;entry.id&#125;</span> /&gt;</span></span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> (<span class="xml"><span class="tag">&lt;<span class="name">div</span>&gt;</span></span></span><br><span class="line"><span class="xml">            <span class="tag">&lt;<span class="name">ul</span> <span class="attr">id</span>=<span class="string">&quot;cart&quot;</span>&gt;</span>&#123;this.props.cart.entries.map(renderEntry)&#125;<span class="tag">&lt;/<span class="name">ul</span>&gt;</span></span></span><br><span class="line"><span class="xml">            <span class="tag">&lt;<span class="name">div</span>&gt;</span><span class="tag">&lt;<span class="name">b</span>&gt;</span>Total: <span class="tag">&lt;<span class="name">span</span> <span class="attr">id</span>=<span class="string">&quot;total&quot;</span>&gt;</span>&#123;this.props.cart.total&#125;<span class="tag">&lt;/<span class="name">span</span>&gt;</span><span class="tag">&lt;/<span class="name">b</span>&gt;</span><span class="tag">&lt;/<span class="name">div</span>&gt;</span></span></span><br><span class="line"><span class="xml">        <span class="tag">&lt;/<span class="name">div</span>&gt;</span></span>)</span><br><span class="line">    &#125; </span><br><span class="line">&#125;));</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> CartEntryView = mobxReact.observer(React.createClass(&#123;</span><br><span class="line">    <span class="attr">render</span>: <span class="function"><span class="keyword">function</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">        <span class="keyword">return</span> (<span class="xml"><span class="tag">&lt;<span class="name">li</span>&gt;</span></span></span><br><span class="line"><span class="xml">            <span class="tag">&lt;<span class="name">button</span> <span class="attr">onClick</span>=<span class="string">&#123;this.removeArticle&#125;</span>&gt;</span><span class="symbol">&amp;laquo;</span><span class="tag">&lt;/<span class="name">button</span>&gt;</span></span></span><br><span class="line"><span class="xml">            <span class="tag">&lt;<span class="name">span</span>&gt;</span>&#123;this.props.entry.article.name&#125;<span class="tag">&lt;/<span class="name">span</span>&gt;</span></span></span><br><span class="line"><span class="xml">            <span class="tag">&lt;<span class="name">span</span>&gt;</span>&#123;this.props.entry.amount&#125;<span class="tag">&lt;/<span class="name">span</span>&gt;</span></span></span><br><span class="line"><span class="xml">        <span class="tag">&lt;/<span class="name">li</span>&gt;</span></span>);</span><br><span class="line">    &#125;,</span><br><span class="line">    </span><br><span class="line">    <span class="attr">removeArticle</span>: <span class="function"><span class="keyword">function</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">        <span class="keyword">if</span> (--<span class="built_in">this</span>.props.entry.amount &lt; <span class="number">1</span>)</span><br><span class="line">            <span class="built_in">this</span>.props.cart.entries.splice(<span class="built_in">this</span>.props.cart.entries.indexOf(<span class="built_in">this</span>.props.entry), <span class="number">1</span>);      </span><br><span class="line">    &#125;</span><br><span class="line">&#125;));</span><br></pre></td></tr></table></figure>
+
+<p>mobx的observer函数做了两件事，一是将fc组件转换成一个observer 函数；二是将fc组件自己注册到observer 函数上。这样的话就能在每次state过期后，能够force render。</p>
+<h3 id="性能更高的原因"><a href="#性能更高的原因" class="headerlink" title="性能更高的原因"></a>性能更高的原因</h3><p>react原始的更新方式，就是re-render整个组件树。但是着有一个问题，当一个组件树是一个广度优先树（即，业务逻辑是在几颗同级树之间更新时，就需要从父级树force更新，虽然没有更新的树，没有进行更新，但是整个树进行了重新reconcile（即，进行了diff操作）</p>
+<p>经过mobx优化的react的更新方式，则是通过包装某个组件，将force-render的工作交给了<code>observer</code> 函数，这个函数在进行更新时，就不要将同级树进行更新（即，可以按需进行更新）。</p>
+<p>那么可以通过使用其他技术，来实现mobx的这种更新吗？maybe，比如<code>immutablejs</code>，可以使得react 组件实现按需更新，但是需要开发者做好数据模型的设计。</p>
+<p>还有另外一种技术，就是使用 <code>event-bus</code> 来对可能需要更新的数据进行事件的注册，注销，在组件的合适时机。但是这样会产生很多样板代码，也不是一个好的方案。</p>
+<hr>
+<h1 id="Pure-UI"><a href="#Pure-UI" class="headerlink" title="Pure UI"></a>Pure UI</h1><blockquote>
+<ul>
+<li>UI = view(application_state)</li>
+<li><a target="_blank" rel="noopener" href="https://rauchg.com/2015/pure-ui">https://rauchg.com/2015/pure-ui</a></li>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/pure-rendering-in-the-light-of-time-and-state-4b537d8d40b1">https://medium.com/@mweststrate/pure-rendering-in-the-light-of-time-and-state-4b537d8d40b1</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx-作者专访"><a href="#mobx-作者专访" class="headerlink" title="mobx 作者专访"></a>mobx 作者专访</h1><blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://survivejs.com/blog/mobx-interview/">https://survivejs.com/blog/mobx-interview/</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx-observe-原理"><a href="#mobx-observe-原理" class="headerlink" title="mobx.observe 原理"></a>mobx.observe 原理</h1><blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/object-observe-is-dead-long-live-mobservable-observe-ad96930140c5">https://medium.com/@mweststrate/object-observe-is-dead-long-live-mobservable-observe-ad96930140c5</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx-响应式原理介绍"><a href="#mobx-响应式原理介绍" class="headerlink" title="mobx 响应式原理介绍"></a>mobx 响应式原理介绍</h1><blockquote>
+<ul>
+<li>2015</li>
+<li><a target="_blank" rel="noopener" href="https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254">https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx2-2-更新"><a href="#mobx2-2-更新" class="headerlink" title="mobx2.2 更新"></a>mobx2.2 更新</h1><blockquote>
+<ul>
+<li>2016</li>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/mobx-2-2-explicit-actions-controlled-mutations-and-improved-dx-45cdc73c7c8d">https://medium.com/@mweststrate/mobx-2-2-explicit-actions-controlled-mutations-and-improved-dx-45cdc73c7c8d</a></li>
+</ul>
+</blockquote>
+<h1 id="解耦state和UI"><a href="#解耦state和UI" class="headerlink" title="解耦state和UI"></a>解耦state和UI</h1><blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://medium.com/hackernoon/how-to-decouple-state-and-ui-a-k-a-you-dont-need-componentwillmount-cc90b787aa37">https://medium.com/hackernoon/how-to-decouple-state-and-ui-a-k-a-you-dont-need-componentwillmount-cc90b787aa37</a></li>
+<li>分治的复杂性： <a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=3J9EJrvqOiM&amp;list=PLW0vzLDjfaNSFs7OBLK6anfQiE5FJzAPD&amp;index=8">https://www.youtube.com/watch?v=3J9EJrvqOiM&amp;list=PLW0vzLDjfaNSFs7OBLK6anfQiE5FJzAPD&amp;index=8</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx3-0"><a href="#mobx3-0" class="headerlink" title="mobx3.0"></a>mobx3.0</h1><blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/mobx-3-released-unpeeling-the-onion-ca877382f443">https://medium.com/@mweststrate/mobx-3-released-unpeeling-the-onion-ca877382f443</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx-背后的基本原则"><a href="#mobx-背后的基本原则" class="headerlink" title="mobx 背后的基本原则"></a>mobx 背后的基本原则</h1><blockquote>
+<ul>
+<li>2017</li>
+<li><a target="_blank" rel="noopener" href="https://hackernoon.com/the-fundamental-principles-behind-mobx-7a725f71f3e8">https://hackernoon.com/the-fundamental-principles-behind-mobx-7a725f71f3e8</a></li>
+</ul>
+</blockquote>
+<h1 id="immutable-的实现-immerjs"><a href="#immutable-的实现-immerjs" class="headerlink" title="immutable 的实现 immerjs"></a>immutable 的实现 immerjs</h1><blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://medium.com/hackernoon/introducing-immer-immutability-the-easy-way-9d73d8f71cb3">https://medium.com/hackernoon/introducing-immer-immutability-the-easy-way-9d73d8f71cb3</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx4-发布"><a href="#mobx4-发布" class="headerlink" title="mobx4 发布"></a>mobx4 发布</h1><blockquote>
+<ul>
+<li>2018 </li>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/mobx-4-better-simpler-faster-smaller-c1fbc08008da">https://medium.com/@mweststrate/mobx-4-better-simpler-faster-smaller-c1fbc08008da</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx5-发布"><a href="#mobx5-发布" class="headerlink" title="mobx5 发布"></a>mobx5 发布</h1><blockquote>
+<ul>
+<li>2018</li>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/mobx-5-the-saga-continues-4852bce05572">https://medium.com/@mweststrate/mobx-5-the-saga-continues-4852bce05572</a></li>
+</ul>
+</blockquote>
+<h1 id="对UI的事后想法"><a href="#对UI的事后想法" class="headerlink" title="对UI的事后想法"></a>对UI的事后想法</h1><blockquote>
+<ul>
+<li>2019</li>
+<li><a target="_blank" rel="noopener" href="https://medium.com/@mweststrate/ui-as-an-afterthought-26e5d2bb24d6">https://medium.com/@mweststrate/ui-as-an-afterthought-26e5d2bb24d6</a></li>
+</ul>
+</blockquote>
+<h1 id="mobx6"><a href="#mobx6" class="headerlink" title="mobx6"></a>mobx6</h1><blockquote>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://michel.codes/blogs/mobx6/">https://michel.codes/blogs/mobx6/</a></li>
+</ul>
+</blockquote>
+</div></article></div></main><footer><div class="paginator"><a class="next" href="/2022/01/13/2021/">下一篇</a></div><div class="copyright"><p>© 2019 - 2022 <a href="http://olierjs.github.io">TbhT</a>, powered by <a href="https://hexo.io/" target="_blank">Hexo</a> and <a href="https://github.com/claymcleod/hexo-theme-hermes" target="_blank">hexo-theme-hermes</a>. </p><p>Logo made by <a target="_blank" rel="noopener" href="https://www.flaticon.com/authors/freepik">Freepik</a> from <a target="_blank" rel="noopener" href="https://flaticon.com">www.flaticon.com</a>.</p></div></footer></div><script async src="//cdn.bootcss.com/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML" integrity="sha384-crwIf/BuaWM9rM65iM+dWFldgQ1Un8jWZMuh3puxb8TOY9+linwLoI7ZHZT+aekW" crossorigin="anonymous"></script><!-- Global site tag (gtag.js) - Google Analytics --><script async src="https://www.googletagmanager.com/gtag/js?id=GTM-5K584LS"></script><script>window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'GTM-5K584LS');</script></body></html>
